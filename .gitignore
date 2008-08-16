@@ -1,0 +1,10 @@
+Makefile
+*.o
+*.bundle
+*.so
+*.dll
+pkg
+doc
+.DS_Store
+ext/qtvr/stuff/**
+*.mov
