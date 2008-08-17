@@ -39,7 +39,10 @@ describe "QTVR::Movie" do
     
     it "knows if the movie is active or not" do
       @movie.active?.should be_false # Not displaying the movie; not "playing" it at all
-     
+    end
+    
+    it "responds to 'flatten'" do
+      @movie.should respond_to('flatten')
     end
   end
 end

@@ -43,7 +43,8 @@ enum {
 // 
 typedef struct rbMovieAttrs{
   Movie movie;
-  CFStringRef inPth;
+  CFStringRef inPth; // Needed?
+  FSRef fsref;
   } rbMovieAttrs;
 
 //

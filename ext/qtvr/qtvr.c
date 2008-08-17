@@ -21,6 +21,7 @@ void Init_qtvr(){
   rb_define_method(cMovie, "filename", get_filename, 0);
   rb_define_method(cMovie, "filename=", set_filename, 1);
   rb_define_method(cMovie, "active?", is_active, 0);
+  rb_define_method(cMovie, "flatten", rb_FlattenMovieFile, 0);
 }
 
 static VALUE rb_GetQTVersion(VALUE self){
@@ -33,7 +34,7 @@ static VALUE rb_GetQTVersion(VALUE self){
     rb_raise(rb_eRuntimeError, "Cannot determine QuickTime version");
   }
 }
-/*
+
 static VALUE rb_FlattenMovieFile(VALUE self){ //, Movie theMovie, FSSpec *theFile)
 	OSErr 		    anErr = noErr;
 	FSSpec 		    tempFile;
@@ -42,14 +43,15 @@ static VALUE rb_FlattenMovieFile(VALUE self){ //, Movie theMovie, FSSpec *theFil
   rbMovieAttrs* mov;
   Data_Get_Struct(self, rbMovieAttrs, mov);
 	
-	DebugAssert(mov->movie != NULL); if(mov->movie == NULL) return invalidMovie;
+  // DebugAssert(mov->movie != NULL); if(mov->movie == NULL) return invalidMovie;
 	
 	// Create the needed temp file.
 	// NumToString(TickCount(), tempFileName);
 	numtostring(TickCount(), tempFileName);
-  anErr = FSMakeFSSpec(tempFile->vRefNum, tempFile->parID, tempFileName, &tempFile);
+  printf("tempFileName: %s", tempFileName);
+  // anErr = FSMakeFSSpec(tempFile->vRefNum, tempFile->parID, tempFileName, &tempFile);
   
-  extern OSErr  FSMakeFSRefUnicode(const FSRef *parentRef, UniCharCount nameLength, const UniChar *name, TextEncoding textEncodingHint, FSRef *newRef) AVAILABLE_MAC_OS_X_VERSION_10_0_AND_LATER;
+  // extern OSErr  FSMakeFSRefUnicode(const FSRef *parentRef, UniCharCount nameLength, const UniChar *name, TextEncoding textEncodingHint, FSRef *newRef) AVAILABLE_MAC_OS_X_VERSION_10_0_AND_LATER;
   
   
 	if(anErr != fnfErr){
@@ -58,21 +60,20 @@ static VALUE rb_FlattenMovieFile(VALUE self){ //, Movie theMovie, FSSpec *theFil
 	}
 	
 	// Flatten the movie.
-	FlattenMovie(mov->movie, flattenAddMovieToDataFork, &tempFile, QTVRFlattenerType, smSystemScript, createMovieFileDeleteCurFile, 0, NULL);
-	anErr = GetMoviesError();
-	if(anErr != noErr){
-		FSpDelete(&tempFile);		// remove the temp file
-    sprintf(error_msg, "Cannot flatten movie. Error: %d", tempFileName, anErr);
-    rb_raise(rb_eRuntimeError, error_msg);
-	}
-	
-	DisposeMovie(mov->movie);
+  // FlattenMovie(mov->movie, flattenAddMovieToDataFork, &tempFile, QTVRFlattenerType, smSystemScript, createMovieFileDeleteCurFile, 0, NULL);
+  // anErr = GetMoviesError();
+  // if(anErr != noErr){
+  //  FSpDelete(&tempFile);   // remove the temp file
+  //     sprintf(error_msg, "Cannot flatten movie. Error: %d", tempFileName, anErr);
+  //     rb_raise(rb_eRuntimeError, error_msg);
+  // }
+  // 
+  // DisposeMovie(mov->movie);
   // anErr = FSpDelete(theFile);  ReturnIfError(anErr);
   // anErr = FSpRename(&tempFile, theFile->name); ReturnIfError(anErr);
 	
 	return Qtrue;
 }
-*/
 static VALUE Movie_initialize(VALUE self, VALUE filename){
   OSErr       err = 0;
   char        error_msg[100];
@@ -95,6 +96,13 @@ static VALUE Movie_initialize(VALUE self, VALUE filename){
     rb_raise(rb_eRuntimeError, "Could not get CFString from \"%s\"\n", RSTRING_PTR(filename));
   }
     
+  // Get and store a FSRef to the file
+  if (err = FSPathMakeRef((UInt8*) StringValuePtr(filename), &mov->fsref, false)){
+    sprintf(error_msg, "Could not convert movie filename \"%s\" to a FSRef. Error: %d\n", StringValuePtr(filename), err);
+    rb_raise(rb_eRuntimeError, error_msg);
+  }
+
+  
   // create the data reference
   if ((err = QTNewDataReferenceFromFullPathCFString(mov->inPth, kQTNativeDefaultPathStyle, 0, &myDataRef, &myDataRefType))){
     sprintf(error_msg, "Could not get DataRef from path \"%s\". Error: %d\n", RSTRING_PTR(filename), err);
