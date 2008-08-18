@@ -36,36 +36,74 @@ static VALUE rb_GetQTVersion(VALUE self){
 }
 
 static VALUE rb_FlattenMovieFile(VALUE self){ //, Movie theMovie, FSSpec *theFile)
-	OSErr 		    anErr = noErr;
-	FSSpec 		    tempFile;
-	char          tempFileName[255];
-	char          error_msg[100];
+	OSErr 		    err = noErr;
+	FSRef 		    tempFile_fsref;
+  FSSpec        tempFile;
+  // UniChar       tempFileName[255] = "atempfilename";
+  char          tempFileNameC[255];
+  CFStringRef   tempFileName;// = CFSTR("atempfilename");
+	char          error_msg[200];
   rbMovieAttrs* mov;
   Data_Get_Struct(self, rbMovieAttrs, mov);
 	
   // DebugAssert(mov->movie != NULL); if(mov->movie == NULL) return invalidMovie;
 	
 	// Create the needed temp file.
-	// NumToString(TickCount(), tempFileName);
-	numtostring(TickCount(), tempFileName);
-  printf("tempFileName: %s", tempFileName);
-  // anErr = FSMakeFSSpec(tempFile->vRefNum, tempFile->parID, tempFileName, &tempFile);
-  
-  // extern OSErr  FSMakeFSRefUnicode(const FSRef *parentRef, UniCharCount nameLength, const UniChar *name, TextEncoding textEncodingHint, FSRef *newRef) AVAILABLE_MAC_OS_X_VERSION_10_0_AND_LATER;
-  
-  
-	if(anErr != fnfErr){
-    sprintf(error_msg, "Cannot create reference to temp file \"%s\". Error: %d", tempFileName, anErr);
+  sprintf(tempFileNameC, "flattened_tmpfile_%d", TickCount());
+  // printf("\ntempFileNameC: %s\n", tempFileNameC);//CFStringGetCStringPtr(tempFileName, CFStringGetSystemEncoding()));
+  tempFileName = CFStringCreateWithCString(NULL,tempFileNameC, CFStringGetSystemEncoding());
+  // printf("\ntempFileName: %s\n", CFStringGetCStringPtr(tempFileName, CFStringGetSystemEncoding()));
+  // FSCatalogInfo catInfo;
+  FSRef folder;
+  if(err = FSGetCatalogInfo(&mov->fsref, kFSCatInfoNone, NULL, NULL, NULL, &folder)){
+    sprintf(error_msg, "Cannot get reference to the movies containing folder. Error: %d", err);
     rb_raise(rb_eRuntimeError, error_msg);
-	}
+  }
+
+  err = FSMakeFSRefUnicode(&folder, 255, (UniChar*) tempFileName, kTextEncodingUnknown, &tempFile_fsref);
+  if(err != fnfErr){
+    sprintf(error_msg, "Cannot create reference to temp file \"%s\". Error: %d", CFStringGetCStringPtr(tempFileName, CFStringGetSystemEncoding()), err);
+    rb_raise(rb_eRuntimeError, error_msg);
+  }
+    
+  FSCatalogInfo catInfo;
+  if(err = FSGetCatalogInfo(&tempFile_fsref, kFSCatInfoNone, NULL, NULL, &tempFile, NULL)){
+    sprintf(error_msg, "Cannot convert temp files FSRef to FSSpec. Error: %d", err);
+    rb_raise(rb_eRuntimeError, error_msg);
+  }
+  
+  // if(err != fnfErr){
+  //     sprintf(error_msg, "Cannot create reference to temp file \"%s\". Error: %d", CFStringGetCStringPtr(tempFileName, CFStringGetSystemEncoding()), err);
+  //     rb_raise(rb_eRuntimeError, error_msg);
+  // }
+	
+  printf("HAVE tempFile FSSpec: %d", tempFile);
 	
 	// Flatten the movie.
   // FlattenMovie(mov->movie, flattenAddMovieToDataFork, &tempFile, QTVRFlattenerType, smSystemScript, createMovieFileDeleteCurFile, 0, NULL);
-  // anErr = GetMoviesError();
-  // if(anErr != noErr){
-  //  FSpDelete(&tempFile);   // remove the temp file
-  //     sprintf(error_msg, "Cannot flatten movie. Error: %d", tempFileName, anErr);
-  //     rb_raise(rb_eRuntimeError, error_msg);
+  // err = GetMoviesError();
+  
+	Movie dstMovie;
+	SetMovieProgressProc(mov->movie, (MovieProgressUPP)-1, 0L);
+	dstMovie = FlattenMovieData(mov->movie,
+		flattenDontInterleaveFlatten | flattenAddMovieToDataFork | flattenForceMovieResourceBeforeMovieData,
+		&tempFile, FOUR_CHAR_CODE('TVOD'),
+		smSystemScript, createMovieFileDeleteCurFile | createMovieFileDontCreateResFile
+	);
+  
+  if ((dstMovie == NULL) || ((err = GetMoviesError()) == fnOpnErr)) {
+		DeleteMovieFile(&tempFile);	/* I don't know why, but sometimes this is necessary */
+		if (dstMovie != NULL)
+			DisposeMovie(dstMovie);
+		
+    sprintf(error_msg, "Cannot flatten movie to temp file \"%s\". Error: %d", tempFileNameC, err);
+    rb_raise(rb_eRuntimeError, error_msg);
+	}
+  
+  // if(err != noErr){
+  //   FSpDelete(&tempFile);   // remove the temp file
+  //   sprintf(error_msg, "Cannot flatten movie to temp file \"%s\". Error: %d", tempFileNameC, err);
+  //   rb_raise(rb_eRuntimeError, error_msg);
   // }
   // 
   // DisposeMovie(mov->movie);
@@ -102,7 +140,6 @@ static VALUE Movie_initialize(VALUE self, VALUE filename){
     rb_raise(rb_eRuntimeError, error_msg);
   }
 
-  
   // create the data reference
   if ((err = QTNewDataReferenceFromFullPathCFString(mov->inPth, kQTNativeDefaultPathStyle, 0, &myDataRef, &myDataRefType))){
     sprintf(error_msg, "Could not get DataRef from path \"%s\". Error: %d\n", RSTRING_PTR(filename), err);
